@@ -8,8 +8,9 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
+import { computeFairnessScore } from "../services/fairness";
 
 export default function CreateOfferScreen({ navigation }: any) {
   const [title, setTitle] = useState("");
@@ -17,19 +18,49 @@ export default function CreateOfferScreen({ navigation }: any) {
   const [quantity, setQuantity] = useState("");
 
   const handleSubmit = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      Alert.alert("Not logged in");
+      return;
+    }
+
     if (!title.trim()) {
       Alert.alert("Title required");
       return;
     }
 
     try {
+      // Create offer
       await addDoc(collection(db, "offers"), {
+        ownerUid: uid,
         title: title.trim(),
         category: category.trim().toLowerCase(),
         quantity: Number(quantity) || 0,
-        ownerUid: auth.currentUser?.uid,
         status: "open",
         createdAt: Date.now(),
+      });
+
+      // Update fairness safely
+      const userRef = doc(db, "users", uid);
+      const userSnap = await getDoc(userRef);
+
+      const existing = userSnap.exists() ? userSnap.data() : {};
+
+      const offersGiven = (existing.offersGiven || 0) + 1;
+      const completedMatches = existing.completedMatches || 0;
+      const activeRequests = existing.activeRequests || 0;
+
+      const fairnessScore = computeFairnessScore({
+        offersGiven,
+        completedMatches,
+        activeRequests,
+      });
+
+      await setDoc(userRef, {
+        offersGiven,
+        completedMatches,
+        activeRequests,
+        fairnessScore,
       });
 
       navigation.goBack();
@@ -40,25 +71,12 @@ export default function CreateOfferScreen({ navigation }: any) {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 40 }}
-    >
+    <ScrollView style={styles.container}>
       <View style={styles.card}>
         <Text style={styles.title}>Create Offer</Text>
 
-        <Input
-          label="Title"
-          value={title}
-          onChangeText={setTitle}
-        />
-
-        <Input
-          label="Category"
-          value={category}
-          onChangeText={setCategory}
-        />
-
+        <Input label="Title" value={title} onChangeText={setTitle} />
+        <Input label="Category" value={category} onChangeText={setCategory} />
         <Input
           label="Quantity"
           value={quantity}
@@ -66,10 +84,7 @@ export default function CreateOfferScreen({ navigation }: any) {
           keyboardType="numeric"
         />
 
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={handleSubmit}
-        >
+        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
           <Text style={styles.primaryText}>Post Offer</Text>
         </TouchableOpacity>
       </View>
@@ -97,7 +112,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#ecfdf5",
     paddingHorizontal: 20,
   },
-
   card: {
     backgroundColor: "white",
     marginTop: 20,
@@ -105,21 +119,18 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     elevation: 3,
   },
-
   title: {
     fontSize: 20,
     fontWeight: "700",
     marginBottom: 25,
     color: "#065f46",
   },
-
   label: {
     fontSize: 14,
     fontWeight: "600",
     marginBottom: 6,
     color: "#065f46",
   },
-
   input: {
     backgroundColor: "#f9fafb",
     padding: 12,
@@ -127,7 +138,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e5e7eb",
   },
-
   primaryButton: {
     backgroundColor: "#10b981",
     paddingVertical: 14,
@@ -135,7 +145,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
   },
-
   primaryText: {
     color: "white",
     fontWeight: "600",

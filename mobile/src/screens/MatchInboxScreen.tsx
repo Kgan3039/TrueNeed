@@ -17,31 +17,37 @@ import {
   doc,
 } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
-import { acceptMatch } from "../services/matchAction";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 
-type Props = NativeStackScreenProps<RootStackParamList, "MatchInbox">;
+type Props = NativeStackScreenProps<
+  RootStackParamList,
+  "MatchInbox"
+>;
 
 type Match = {
   id: string;
   offerTitle?: string;
   requestTitle?: string;
-  offerId?: string;
-  requestId?: string;
+  offerId?: string | null;
+  requestId?: string | null;
   score?: number | string;
   reasons?: string[];
   status: "proposed" | "accepted" | "rejected";
+  requestOwnerUid?: string;
 };
 
-export default function MatchInboxScreen({ route }: Props) {
-  const currentUid =
-    route?.params?.currentUid ?? auth.currentUser?.uid;
+export default function MatchInboxScreen({}: Props) {
+  const currentUid = auth.currentUser?.uid;
 
-  const [tab, setTab] = useState<Match["status"]>("proposed");
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tab, setTab] =
+    useState<Match["status"]>("proposed");
+  const [busyId, setBusyId] =
+    useState<string | null>(null);
+  const [matches, setMatches] =
+    useState<Match[]>([]);
+  const [loading, setLoading] =
+    useState(true);
 
   useEffect(() => {
     if (!currentUid) return;
@@ -62,7 +68,10 @@ export default function MatchInboxScreen({ route }: Props) {
         );
         setLoading(false);
       },
-      () => setLoading(false)
+      (error) => {
+        console.error(error);
+        setLoading(false);
+      }
     );
 
     return () => unsub();
@@ -80,28 +89,16 @@ export default function MatchInboxScreen({ route }: Props) {
     setBusyId(match.id);
 
     try {
-      if (status === "accepted") {
-        if (!match.offerId || !match.requestId) {
-          Alert.alert(
-            "Missing data",
-            "Match missing offerId/requestId."
-          );
-          return;
-        }
-
-        await acceptMatch({
-          matchId: match.id,
-          offerId: match.offerId,
-          requestId: match.requestId,
-        });
-      } else {
-        await updateDoc(doc(db, "matches", match.id), {
-          status,
-        });
-      }
+      await updateDoc(
+        doc(db, "matches", match.id),
+        { status }
+      );
     } catch (e) {
       console.error(e);
-      Alert.alert("Error", "Failed to update match.");
+      Alert.alert(
+        "Error",
+        "Failed to update match."
+      );
     } finally {
       setBusyId(null);
     }
@@ -124,7 +121,8 @@ export default function MatchInboxScreen({ route }: Props) {
       <Text
         style={[
           styles.tabText,
-          tab === value && styles.activeTabText,
+          tab === value &&
+            styles.activeTabText,
         ]}
       >
         {label}
@@ -134,16 +132,29 @@ export default function MatchInboxScreen({ route }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Match Inbox</Text>
+      <Text style={styles.title}>
+        Match Inbox
+      </Text>
 
       <View style={styles.tabRow}>
-        <TabButton label="Proposed" value="proposed" />
-        <TabButton label="Accepted" value="accepted" />
-        <TabButton label="Rejected" value="rejected" />
+        <TabButton
+          label="Proposed"
+          value="proposed"
+        />
+        <TabButton
+          label="Accepted"
+          value="accepted"
+        />
+        <TabButton
+          label="Rejected"
+          value="rejected"
+        />
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 30 }} />
+        <ActivityIndicator
+          style={{ marginTop: 30 }}
+        />
       ) : filtered.length === 0 ? (
         <View style={styles.emptyBox}>
           <Text style={{ opacity: 0.7 }}>
@@ -174,31 +185,42 @@ function MatchCard({
 }: {
   item: Match;
   busyId: string | null;
-  setStatus: (match: Match, status: Match["status"]) => void;
+  setStatus: (
+    match: Match,
+    status: Match["status"]
+  ) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] =
+    useState(false);
 
   const scoreNum =
     typeof item.score === "number"
       ? item.score
       : Number(item.score);
-  const scoreText = Number.isFinite(scoreNum)
-    ? scoreNum.toFixed(2)
-    : "—";
+
+  const scoreText =
+    Number.isFinite(scoreNum)
+      ? scoreNum.toFixed(2)
+      : "—";
 
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>
-            {item.offerTitle ?? "Offer"}
+            {item.offerTitle ??
+              "Offer"}
           </Text>
           <Text style={styles.subText}>
-            → {item.requestTitle ?? "Request"}
+            →{" "}
+            {item.requestTitle ??
+              "Request"}
           </Text>
         </View>
 
-        <View style={{ alignItems: "flex-end" }}>
+        <View
+          style={{ alignItems: "flex-end" }}
+        >
           <Text style={styles.score}>
             {scoreText}
           </Text>
@@ -208,50 +230,21 @@ function MatchCard({
         </View>
       </View>
 
-      {Array.isArray(item.reasons) &&
-        item.reasons.length > 0 && (
-          <View style={{ marginTop: 10 }}>
-            <Pressable
-              onPress={() => setExpanded((v) => !v)}
-              style={styles.reasonToggle}
-            >
-              <Text style={styles.reasonTitle}>
-                Why this match?
-              </Text>
-              <Text style={styles.reasonTitle}>
-                {expanded ? "▲" : "▼"}
-              </Text>
-            </Pressable>
-
-            <View style={styles.reasonBox}>
-              {!expanded ? (
-                <Text style={styles.reasonText}>
-                  • {item.reasons[0]}
-                </Text>
-              ) : (
-                item.reasons.map((r, idx) => (
-                  <Text
-                    key={idx}
-                    style={styles.reasonText}
-                  >
-                    • {r}
-                  </Text>
-                ))
-              )}
-            </View>
-          </View>
-        )}
-
       {item.status === "proposed" && (
         <View style={styles.buttonRow}>
           <Pressable
             disabled={busyId === item.id}
             onPress={() =>
-              setStatus(item, "accepted")
+              setStatus(
+                item,
+                "accepted"
+              )
             }
             style={styles.acceptBtn}
           >
-            <Text style={styles.acceptText}>
+            <Text
+              style={styles.acceptText}
+            >
               Accept
             </Text>
           </Pressable>
@@ -259,11 +252,16 @@ function MatchCard({
           <Pressable
             disabled={busyId === item.id}
             onPress={() =>
-              setStatus(item, "rejected")
+              setStatus(
+                item,
+                "rejected"
+              )
             }
             style={styles.rejectBtn}
           >
-            <Text style={styles.rejectText}>
+            <Text
+              style={styles.rejectText}
+            >
               Reject
             </Text>
           </Pressable>
@@ -341,27 +339,6 @@ const styles = StyleSheet.create({
   status: {
     fontSize: 11,
     color: "#6b7280",
-  },
-  reasonToggle: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  reasonTitle: {
-    fontSize: 12,
-    fontWeight: "900",
-    color: "#065f46",
-  },
-  reasonBox: {
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#d1fae5",
-  },
-  reasonText: {
-    fontSize: 12,
-    color: "#374151",
   },
   buttonRow: {
     flexDirection: "row",

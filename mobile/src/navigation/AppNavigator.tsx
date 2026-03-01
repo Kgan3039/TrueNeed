@@ -36,10 +36,10 @@ export default function AppNavigator({ isLoggedIn }: Props) {
       {isLoggedIn ? (
         <>
           <Stack.Screen name="Home" component={HomeScreen} options={{ title: "Home" }} />
-          <Stack.Screen name="CreateOffer" component={CreateOfferScreen} />
-          <Stack.Screen name="CreateRequest" component={CreateRequestScreen} />
-          <Stack.Screen name="MatchInbox" component={MatchInboxScreen} />
-          <Stack.Screen name="Dashboard" component={DashboardScreen} />
+          <Stack.Screen name="CreateOffer" component={CreateOfferScreen} options={{ title: "TrueNeed" }} />
+          <Stack.Screen name="CreateRequest" component={CreateRequestScreen} options={{ title: "TrueNeed" }} />
+          <Stack.Screen name="MatchInbox" component={MatchInboxScreen} options={{ title: "TrueNeed" }} />
+          <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: "TrueNeed" }} />
         </>
       ) : (
         <>

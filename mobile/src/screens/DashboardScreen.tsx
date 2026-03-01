@@ -3,91 +3,229 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  Alert,
+  ActivityIndicator,
   ScrollView,
 } from "react-native";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { signOut } from "firebase/auth";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 
 export default function DashboardScreen() {
-  const currentUid = auth.currentUser?.uid;
+  const uid = auth.currentUser?.uid;
 
+  const [loading, setLoading] = useState(true);
+
+  // PERSONAL
   const [offersCount, setOffersCount] = useState(0);
   const [requestsCount, setRequestsCount] = useState(0);
   const [acceptedCount, setAcceptedCount] = useState(0);
+  const [fairnessScore, setFairnessScore] = useState(50);
+
+  // GLOBAL
+  const [totalOffers, setTotalOffers] = useState(0);
+  const [totalRequests, setTotalRequests] = useState(0);
+  const [totalAccepted, setTotalAccepted] = useState(0);
+  const [totalImpactPoints, setTotalImpactPoints] = useState(0);
 
   useEffect(() => {
-    if (!currentUid) return;
+    const fetchData = async () => {
+      try {
+        // ======================
+        // PERSONAL DATA
+        // ======================
 
-    const offersQ = query(
-      collection(db, "offers"),
-      where("ownerUid", "==", currentUid)
-    );
+        if (uid) {
+          const offersSnap = await getDocs(
+            query(
+              collection(db, "offers"),
+              where("ownerUid", "==", uid)
+            )
+          );
+          setOffersCount(offersSnap.size);
 
-    const requestsQ = query(
-      collection(db, "requests"),
-      where("ownerUid", "==", currentUid)
-    );
+          const requestsSnap = await getDocs(
+            query(
+              collection(db, "requests"),
+              where("ownerUid", "==", uid)
+            )
+          );
+          setRequestsCount(requestsSnap.size);
 
-    const matchesQ = query(
-      collection(db, "matches"),
-      where("requestOwnerUid", "==", currentUid),
-      where("status", "==", "accepted")
-    );
+          const matchesSnap = await getDocs(
+            query(
+              collection(db, "matches"),
+              where("requestOwnerUid", "==", uid),
+              where("status", "==", "accepted")
+            )
+          );
+          setAcceptedCount(matchesSnap.size);
 
-    const unsubOffers = onSnapshot(offersQ, (snap) =>
-      setOffersCount(snap.size)
-    );
+          const userDoc = await getDoc(
+            doc(db, "users", uid)
+          );
+          if (userDoc.exists()) {
+            setFairnessScore(
+              userDoc.data().fairnessScore ?? 50
+            );
+          }
+        }
 
-    const unsubRequests = onSnapshot(requestsQ, (snap) =>
-      setRequestsCount(snap.size)
-    );
+        // ======================
+        // GLOBAL DATA
+        // ======================
 
-    const unsubMatches = onSnapshot(matchesQ, (snap) =>
-      setAcceptedCount(snap.size)
-    );
+        const allOffers = await getDocs(
+          collection(db, "offers")
+        );
+        setTotalOffers(allOffers.size);
 
-    return () => {
-      unsubOffers();
-      unsubRequests();
-      unsubMatches();
+        const allRequests = await getDocs(
+          collection(db, "requests")
+        );
+        setTotalRequests(allRequests.size);
+
+        const acceptedMatches = await getDocs(
+          query(
+            collection(db, "matches"),
+            where("status", "==", "accepted")
+          )
+        );
+        setTotalAccepted(acceptedMatches.size);
+
+        // Global Impact = sum of each user's impact
+        const usersSnap = await getDocs(
+          collection(db, "users")
+        );
+
+        let globalImpact = 0;
+
+        for (const user of usersSnap.docs) {
+          const data = user.data();
+          const fairness =
+            data.fairnessScore ?? 50;
+          const completed =
+            data.completedMatches ?? 0;
+
+          globalImpact +=
+            completed * (fairness / 100);
+        }
+
+        setTotalImpactPoints(globalImpact);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
     };
-  }, [currentUid]);
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (e) {
-      Alert.alert("Error logging out");
-    }
-  };
+    fetchData();
+  }, [uid]);
+
+  const personalImpact =
+    acceptedCount * (fairnessScore / 100);
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Dashboard</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 40 }}
+    >
+      {/* ================= PERSONAL ================= */}
+      <Text style={styles.sectionTitle}>
+        Your Contribution
+      </Text>
 
-      <View style={styles.card}>
-        <Text style={styles.metricLabel}>Offers Posted</Text>
-        <Text style={styles.metricValue}>{offersCount}</Text>
-      </View>
+      <StatCard
+        label="Offers Posted"
+        value={offersCount}
+      />
 
-      <View style={styles.card}>
-        <Text style={styles.metricLabel}>Requests Posted</Text>
-        <Text style={styles.metricValue}>{requestsCount}</Text>
-      </View>
+      <StatCard
+        label="Requests Posted"
+        value={requestsCount}
+      />
 
-      <View style={styles.card}>
-        <Text style={styles.metricLabel}>Accepted Matches</Text>
-        <Text style={styles.metricValue}>{acceptedCount}</Text>
-      </View>
+      <StatCard
+        label="Accepted Matches"
+        value={acceptedCount}
+      />
 
-      {/* Logout Button */}
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Log Out</Text>
-      </TouchableOpacity>
+      <StatCard
+        label="Impact Points"
+        value={personalImpact.toFixed(2)}
+        highlight
+      />
+
+      {/* ================= GLOBAL ================= */}
+      <Text style={[styles.sectionTitle, { marginTop: 30 }]}>
+        Community Impact
+      </Text>
+
+      <StatCard
+        label="Total Offers"
+        value={totalOffers}
+      />
+
+      <StatCard
+        label="Total Requests"
+        value={totalRequests}
+      />
+
+      <StatCard
+        label="Total Accepted Matches"
+        value={totalAccepted}
+      />
+
+      <StatCard
+        label="Total Impact Points"
+        value={totalImpactPoints.toFixed(2)}
+        highlight
+      />
     </ScrollView>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string | number;
+  highlight?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.card,
+        highlight && styles.highlightCard,
+      ]}
+    >
+      <Text style={styles.cardLabel}>
+        {label}
+      </Text>
+      <Text
+        style={[
+          styles.cardValue,
+          highlight && styles.highlightValue,
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -97,45 +235,39 @@ const styles = StyleSheet.create({
     backgroundColor: "#ecfdf5",
     padding: 20,
   },
-
-  title: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#065f46",
-    marginBottom: 20,
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
-
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#065f46",
+    marginBottom: 16,
+  },
   card: {
     backgroundColor: "white",
     padding: 20,
-    borderRadius: 16,
-    marginBottom: 15,
-    elevation: 3,
+    borderRadius: 18,
+    marginBottom: 16,
+    elevation: 4,
   },
-
-  metricLabel: {
+  highlightCard: {
+    backgroundColor: "#10b981",
+  },
+  cardLabel: {
     fontSize: 14,
     color: "#6b7280",
-  },
-
-  metricValue: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#065f46",
-    marginTop: 5,
-  },
-
-  logoutButton: {
-    marginTop: 30,
-    backgroundColor: "#ef4444",
-    paddingVertical: 14,
-    borderRadius: 999,
-    alignItems: "center",
-  },
-
-  logoutText: {
-    color: "white",
+    marginBottom: 6,
     fontWeight: "700",
-    fontSize: 16,
+  },
+  cardValue: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#065f46",
+  },
+  highlightValue: {
+    color: "white",
   },
 });

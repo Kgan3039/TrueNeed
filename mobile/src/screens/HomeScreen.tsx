@@ -8,14 +8,19 @@ import {
   Dimensions,
   ScrollView,
   Image,
+  Alert,
 } from "react-native";
 import {
   collection,
   onSnapshot,
   query,
   orderBy,
+  doc,
+  getDoc,
+  addDoc,
+  updateDoc,
 } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { auth, db } from "../firebase/firebase";
 
 const { width } = Dimensions.get("window");
 
@@ -23,6 +28,7 @@ export default function HomeScreen({ navigation }: any) {
   const [offers, setOffers] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [fairnessMap, setFairnessMap] = useState<{ [key: string]: number }>({});
   const scrollRef = useRef<any>(null);
 
   useEffect(() => {
@@ -33,8 +39,27 @@ export default function HomeScreen({ navigation }: any) {
       setOffers(snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) })));
     });
 
-    const unsubRequests = onSnapshot(requestsQ, (snapshot) => {
-      setRequests(snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) })));
+    const unsubRequests = onSnapshot(requestsQ, async (snapshot) => {
+      const requestData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as any),
+      }));
+
+      setRequests(requestData);
+
+      const newFairnessMap: { [key: string]: number } = {};
+
+      for (const req of requestData) {
+        if (req.ownerUid && !newFairnessMap[req.ownerUid]) {
+          const userRef = doc(db, "users", req.ownerUid);
+          const snap = await getDoc(userRef);
+          newFairnessMap[req.ownerUid] = snap.exists()
+            ? snap.data().fairnessScore ?? 50
+            : 50;
+        }
+      }
+
+      setFairnessMap(newFairnessMap);
     });
 
     return () => {
@@ -43,9 +68,58 @@ export default function HomeScreen({ navigation }: any) {
     };
   }, []);
 
-  const handleTabPress = (index: number) => {
-    scrollRef.current?.scrollTo({ x: width * index, animated: true });
-    setActiveIndex(index);
+  const handleAccept = async (item: any, type: "offer" | "request") => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    try {
+      // 🔥 Create match
+      await addDoc(collection(db, "matches"), {
+        offerId: type === "offer" ? item.id : null,
+        offerTitle: type === "offer" ? item.title : null,
+        requestId: type === "request" ? item.id : null,
+        requestTitle: type === "request" ? item.title : null,
+        requestOwnerUid: item.ownerUid,
+        acceptedBy: currentUser.uid,
+        status: "accepted",
+        score: 1,
+        createdAt: new Date(),
+      });
+
+      // 🔥 Update user stats (THIS FIXES IMPACT POINTS)
+      const userRef = doc(db, "users", item.ownerUid);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+
+        const completedMatches = (data.completedMatches ?? 0) + 1;
+        const activeRequests = Math.max((data.activeRequests ?? 0) - 1, 0);
+        const offersGiven = data.offersGiven ?? 0;
+
+        const rawScore =
+          50 +
+          10 * offersGiven +
+          5 * completedMatches -
+          5 * activeRequests;
+
+        const fairnessScore = Math.max(
+          0,
+          Math.min(100, rawScore)
+        );
+
+        await updateDoc(userRef, {
+          completedMatches,
+          activeRequests,
+          fairnessScore,
+        });
+      }
+
+      navigation.navigate("MatchInbox");
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "Failed to accept.");
+    }
   };
 
   const renderPost = ({ item }: any) => {
@@ -55,29 +129,56 @@ export default function HomeScreen({ navigation }: any) {
       <View style={styles.feedCard}>
         <View style={styles.cardAccent} />
 
-        <View style={styles.cardContentRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.feedTitle}>
-              {item.title ?? "(Untitled)"}
+        <View style={styles.topSection}>
+          {item.category && (
+            <Text style={styles.categoryText}>
+              {item.category.toUpperCase()}
             </Text>
+          )}
 
-            {item.category ? (
-              <Text style={styles.categoryText}>
-                {item.category.toUpperCase()}
+          <Text style={styles.centeredTitle}>
+            {item.title ?? "(Untitled)"}
+          </Text>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.bottomRow}>
+          {isOffer ? (
+            <View>
+              <Text style={styles.infoLabel}>Quantity</Text>
+              <Text style={styles.infoValue}>
+                {item.quantity ?? "-"}
               </Text>
-            ) : null}
-          </View>
+            </View>
+          ) : (
+            <>
+              <View>
+                <Text style={styles.infoLabel}>Urgency</Text>
+                <Text style={styles.infoValue}>
+                  {item.urgency ?? "-"}
+                </Text>
+              </View>
 
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>
-              {isOffer ? "QTY" : "URGENCY"}
-            </Text>
-            <Text style={styles.statValue}>
-              {isOffer
-                ? item.quantity ?? "-"
-                : item.urgency ?? "-"}
-            </Text>
-          </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={styles.infoLabel}>Fairness Score</Text>
+                <View style={styles.fairnessBadge}>
+                  <Text style={styles.fairnessText}>
+                    {fairnessMap[item.ownerUid] ?? 50}
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
+
+          <TouchableOpacity
+            style={styles.acceptButton}
+            onPress={() =>
+              handleAccept(item, isOffer ? "offer" : "request")
+            }
+          >
+            <Text style={styles.acceptButtonText}>Accept</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -85,18 +186,17 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {/* Top Header */}
       <View style={styles.header}>
         <Text style={styles.logo}>TrueNeed</Text>
 
         <View style={styles.tabsContainer}>
-          <TouchableOpacity onPress={() => handleTabPress(0)}>
+          <TouchableOpacity onPress={() => setActiveIndex(0)}>
             <Text style={[styles.tabText, activeIndex === 0 && styles.activeTab]}>
               Offers
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => handleTabPress(1)}>
+          <TouchableOpacity onPress={() => setActiveIndex(1)}>
             <Text style={[styles.tabText, activeIndex === 1 && styles.activeTab]}>
               Requests
             </Text>
@@ -104,35 +204,13 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
 
-      {/* Feed */}
-      <ScrollView
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        ref={scrollRef}
-        onMomentumScrollEnd={(e) => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / width);
-          setActiveIndex(index);
-        }}
-      >
-        <FlatList
-          data={offers}
-          keyExtractor={(item) => item.id}
-          renderItem={renderPost}
-          style={{ width }}
-          contentContainerStyle={{ paddingBottom: 150, paddingTop: 20 }}
-        />
+      <FlatList
+        data={activeIndex === 0 ? offers : requests}
+        keyExtractor={(item) => item.id}
+        renderItem={renderPost}
+        contentContainerStyle={{ paddingBottom: 150, paddingTop: 20 }}
+      />
 
-        <FlatList
-          data={requests}
-          keyExtractor={(item) => item.id}
-          renderItem={renderPost}
-          style={{ width }}
-          contentContainerStyle={{ paddingBottom: 150, paddingTop: 20 }}
-        />
-      </ScrollView>
-
-      {/* Bottom Nav */}
       <View style={styles.bottomNav}>
         <NavButton
           label="Offer"
@@ -169,10 +247,7 @@ function NavButton({ label, icon, onPress }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f0fdf4",
-  },
+  container: { flex: 1, backgroundColor: "#f0fdf4" },
 
   header: {
     backgroundColor: "#10b981",
@@ -188,10 +263,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
 
-  tabsContainer: {
-    flexDirection: "row",
-    gap: 35,
-  },
+  tabsContainer: { flexDirection: "row", gap: 35 },
 
   tabText: {
     fontSize: 18,
@@ -210,60 +282,88 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     marginHorizontal: 20,
     marginVertical: 14,
-    padding: 22,
-    borderRadius: 22,
+    padding: 28,
+    borderRadius: 24,
     elevation: 6,
-    shadowColor: "#065f46",
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
   },
 
   cardAccent: {
     height: 4,
-    width: 45,
+    width: 50,
     backgroundColor: "#10b981",
     borderRadius: 4,
-    marginBottom: 15,
+    marginBottom: 10,
   },
 
-  cardContentRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  topSection: {
     alignItems: "center",
   },
 
-  feedTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#065f46",
-  },
-
   categoryText: {
-    marginTop: 6,
+    alignSelf: "flex-start",
     fontSize: 12,
     fontWeight: "600",
     color: "#6b7280",
   },
 
-  statBox: {
-    backgroundColor: "#d1fae5",
-    paddingVertical: 14,
-    paddingHorizontal: 22,
-    borderRadius: 18,
-    alignItems: "center",
-  },
-
-  statLabel: {
-    fontSize: 11,
-    color: "#065f46",
-    opacity: 0.8,
-  },
-
-  statValue: {
-    fontSize: 22,
+  centeredTitle: {
+    fontSize: 30,
     fontWeight: "900",
     color: "#065f46",
-    marginTop: 4,
+    marginTop: 2,
+    textAlign: "center",
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: "#e5e7eb",
+    marginVertical: 18,
+  },
+
+  bottomRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 20,
+  },
+
+  infoLabel: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginBottom: 6,
+    fontWeight: "600",
+  },
+
+  infoValue: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#065f46",
+  },
+
+  fairnessBadge: {
+    backgroundColor: "#065f46",
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+  },
+
+  fairnessText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+
+  acceptButton: {
+    backgroundColor: "#10b981",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+  },
+
+  acceptButtonText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 14,
   },
 
   bottomNav: {
@@ -278,15 +378,9 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
   },
 
-  navItem: {
-    alignItems: "center",
-  },
+  navItem: { alignItems: "center" },
 
-  navIconImage: {
-    width: 38,
-    height: 38,
-    resizeMode: "contain",
-  },
+  navIconImage: { width: 38, height: 38, resizeMode: "contain" },
 
   navText: {
     fontSize: 12,
