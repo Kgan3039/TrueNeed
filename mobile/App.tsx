@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { NavigationContainer } from "@react-navigation/native";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "./src/firebase/firebase";
 import AppNavigator from "./src/navigation/AppNavigator";
@@ -11,9 +10,5 @@ export default function App() {
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  return (
-    <NavigationContainer>
-      <AppNavigator isAuthed={!!user} />
-    </NavigationContainer>
-  );
+  return <AppNavigator user={user} />;
 }
