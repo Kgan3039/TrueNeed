@@ -1,14 +1,36 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
-import { collection, doc, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  Text,
+  View,
+  Alert,
+} from "react-native";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+
 import { db } from "../firebase/firebase";
 import { theme } from "../theme";
+import { RootStackParamList } from "../navigation/AppNavigator";
+
+import { acceptMatch } from "../services/matchAction";
+
+type Props = NativeStackScreenProps<RootStackParamList, "MatchInbox">;
 
 type Match = {
   id: string;
   offerTitle?: string;
   requestTitle?: string;
-  score?: number;
+  score?: number | string; // allow string too, since Firestore might store it that way
   reasons?: string[];
   status: "proposed" | "accepted" | "rejected";
 };
@@ -21,9 +43,14 @@ function MatchCard({
 }: {
   item: Match;
   busyId: string | null;
-  setStatus: (matchId: string, status: Match["status"]) => void;
+  setStatus: (match: Match, status: Match["status"]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+
+  //SAFER SCORE DISPLAY (prevents NaN)
+  const scoreNum =
+    typeof item.score === "number" ? item.score : Number(item.score);
+  const scoreText = Number.isFinite(scoreNum) ? scoreNum.toFixed(2) : "—";
 
   return (
     <View
@@ -46,7 +73,10 @@ function MatchCard({
         </View>
         <View style={{ alignItems: "flex-end" }}>
           <Text style={{ fontWeight: "900", color: theme.greenDark }}>
-            {Number(item.score ?? 0).toFixed(2)}
+            {scoreText}
+          </Text>
+          <Text style={{ fontSize: 11, color: theme.mutedText }}>
+            {item.status.toUpperCase()}
           </Text>
         </View>
       </View>
@@ -99,7 +129,7 @@ function MatchCard({
         <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
           <Pressable
             disabled={busyId === item.id}
-            onPress={() => setStatus(item.id, "accepted")}
+            onPress={() => setStatus(item, "accepted")}
             style={({ pressed }) => ({
               flex: 1,
               paddingVertical: 10,
@@ -115,7 +145,7 @@ function MatchCard({
 
           <Pressable
             disabled={busyId === item.id}
-            onPress={() => setStatus(item.id, "rejected")}
+            onPress={() => setStatus(item, "rejected")}
             style={({ pressed }) => ({
               flex: 1,
               paddingVertical: 10,
@@ -143,6 +173,7 @@ export default function MatchInboxScreen({ currentUid }: { currentUid: string })
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // requestOwnerUid == current user (recipient of the match)
     const qy = query(
       collection(db, "matches"),
       where("requestOwnerUid", "==", currentUid),
@@ -163,10 +194,31 @@ export default function MatchInboxScreen({ currentUid }: { currentUid: string })
 
   const filtered = useMemo(() => matches.filter((m) => m.status === tab), [matches, tab]);
 
-  const setStatus = async (matchId: string, status: Match["status"]) => {
-    setBusyId(matchId);
+  const setStatus = async (match: Match, status: Match["status"]) => {
+    setBusyId(match.id);
     try {
-      await updateDoc(doc(db, "matches", matchId), { status });
+      if (status === "accepted") {
+        // We NEED offerId + requestId to complete the workflow
+        if (!match.offerId || !match.requestId) {
+          Alert.alert(
+            "Missing data",
+            "This match is missing offerId/requestId. Ask Mihir to include them when creating matches."
+          );
+          return;
+        }
+
+        await acceptMatch({
+          matchId: match.id,
+          offerId: match.offerId,
+          requestId: match.requestId,
+        });
+      } else {
+        // rejected (or any other future status) just updates the match
+        await updateDoc(doc(db, "matches", match.id), { status });
+      }
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "Failed to update match.");
     } finally {
       setBusyId(null);
     }
@@ -221,4 +273,10 @@ export default function MatchInboxScreen({ currentUid }: { currentUid: string })
       )}
     </View>
   );
+}
+
+// ONLY default export: screen component reading from route.params
+export default function MatchInboxScreen({ route }: Props) {
+  const { currentUid } = route.params;
+  return <MatchInboxInner currentUid={currentUid} />;
 }
