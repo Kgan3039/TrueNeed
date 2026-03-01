@@ -3,8 +3,7 @@ import { View, Text, FlatList, Button, Alert } from "react-native";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 
-// TODO (later): uncomment once Mihir creates this file/function
-// import { generateMatchForUser } from "../services/matchingService";
+import { generateMatchForUser } from "../firebase/firestoreService";
 
 type Post = {
   id: string;
@@ -76,14 +75,8 @@ export default function HomeScreen({ navigation }: any) {
     if (!uid) return;
 
     try {
-      // ✅ Mihir should wire his matching logic here:
-      // await generateMatchForUser(uid);
-
-      // Temporary placeholder so the button works before matching exists:
-      Alert.alert(
-        "Generate Match",
-        "Hook Mihir's generateMatchForUser(uid) here. Then check Match Inbox."
-      );
+      await generateMatchForUser(uid);
+      Alert.alert("Success", "Match generated. Check Match Inbox.");
     } catch (e) {
       console.error(e);
       Alert.alert("Error", "Failed to generate match");

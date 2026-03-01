@@ -105,6 +105,31 @@ export async function createMatch(matchData: {
   return docRef.id;
 }
 
+
+// -----------------------------
+// GENERATE MATCH FOR USER
+// -----------------------------
+
+export async function generateMatchForUser(currentUid: string) {
+  if (!currentUid) return null;
+
+  const requests = await fetchOpenRequests();
+  const offers = await fetchOpenOffers();
+
+  const matchData = generateMatch(requests, offers);
+
+  if (!matchData) {
+    console.log("No match found");
+    return null;
+  }
+
+  const matchId = await createMatch(matchData);
+
+  console.log("Match created:", matchId);
+  return matchId;
+}
+
+
 // -----------------------------
 // UPDATE MATCH STATUS
 // -----------------------------
