@@ -3,70 +3,91 @@ import {
   View,
   Text,
   StyleSheet,
+  TouchableOpacity,
+  Alert,
   ScrollView,
 } from "react-native";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { signOut } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 
 export default function DashboardScreen() {
-  const uid = auth.currentUser?.uid;
+  const currentUid = auth.currentUser?.uid;
 
   const [offersCount, setOffersCount] = useState(0);
   const [requestsCount, setRequestsCount] = useState(0);
   const [acceptedCount, setAcceptedCount] = useState(0);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!currentUid) return;
 
-    const offersQ = query(collection(db, "offers"), where("ownerUid", "==", uid));
-    const requestsQ = query(collection(db, "requests"), where("ownerUid", "==", uid));
+    const offersQ = query(
+      collection(db, "offers"),
+      where("ownerUid", "==", currentUid)
+    );
+
+    const requestsQ = query(
+      collection(db, "requests"),
+      where("ownerUid", "==", currentUid)
+    );
+
     const matchesQ = query(
       collection(db, "matches"),
-      where("requestOwnerUid", "==", uid),
+      where("requestOwnerUid", "==", currentUid),
       where("status", "==", "accepted")
     );
 
-    const unsub1 = onSnapshot(offersQ, (s) => setOffersCount(s.size));
-    const unsub2 = onSnapshot(requestsQ, (s) => setRequestsCount(s.size));
-    const unsub3 = onSnapshot(matchesQ, (s) => setAcceptedCount(s.size));
+    const unsubOffers = onSnapshot(offersQ, (snap) =>
+      setOffersCount(snap.size)
+    );
+
+    const unsubRequests = onSnapshot(requestsQ, (snap) =>
+      setRequestsCount(snap.size)
+    );
+
+    const unsubMatches = onSnapshot(matchesQ, (snap) =>
+      setAcceptedCount(snap.size)
+    );
 
     return () => {
-      unsub1();
-      unsub2();
-      unsub3();
+      unsubOffers();
+      unsubRequests();
+      unsubMatches();
     };
-  }, [uid]);
+  }, [currentUid]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      Alert.alert("Error logging out");
+    }
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-      
-      {/* Profile Section */}
-      <View style={styles.profileCard}>
-        <Text style={styles.profileTitle}>Your Account</Text>
-        <Text style={styles.profileEmail}>
-          {auth.currentUser?.email}
-        </Text>
+    <ScrollView style={styles.container}>
+      <Text style={styles.title}>Dashboard</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.metricLabel}>Offers Posted</Text>
+        <Text style={styles.metricValue}>{offersCount}</Text>
       </View>
 
-      {/* Stats Section */}
-      <Text style={styles.sectionTitle}>Your Activity</Text>
-
-      <View style={styles.statsGrid}>
-        <StatCard label="Offers Posted" value={offersCount} />
-        <StatCard label="Requests Posted" value={requestsCount} />
-        <StatCard label="Accepted Matches" value={acceptedCount} />
+      <View style={styles.card}>
+        <Text style={styles.metricLabel}>Requests Posted</Text>
+        <Text style={styles.metricValue}>{requestsCount}</Text>
       </View>
 
+      <View style={styles.card}>
+        <Text style={styles.metricLabel}>Accepted Matches</Text>
+        <Text style={styles.metricValue}>{acceptedCount}</Text>
+      </View>
+
+      {/* Logout Button */}
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <Text style={styles.logoutText}>Log Out</Text>
+      </TouchableOpacity>
     </ScrollView>
-  );
-}
-
-function StatCard({ label, value }: any) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statNumber}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
   );
 }
 
@@ -74,58 +95,47 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#ecfdf5",
-    paddingHorizontal: 20,
+    padding: 20,
   },
 
-  profileCard: {
+  title: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#065f46",
+    marginBottom: 20,
+  },
+
+  card: {
     backgroundColor: "white",
-    marginTop: 20,
     padding: 20,
     borderRadius: 16,
-    elevation: 3,
-  },
-
-  profileTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#065f46",
-    marginBottom: 8,
-  },
-
-  profileEmail: {
-    fontSize: 14,
-    color: "#444",
-  },
-
-  sectionTitle: {
-    marginTop: 30,
     marginBottom: 15,
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#065f46",
-  },
-
-  statsGrid: {
-    gap: 15,
-  },
-
-  statCard: {
-    backgroundColor: "white",
-    paddingVertical: 25,
-    borderRadius: 16,
-    alignItems: "center",
     elevation: 3,
   },
 
-  statNumber: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#10b981",
+  metricLabel: {
+    fontSize: 14,
+    color: "#6b7280",
   },
 
-  statLabel: {
-    marginTop: 6,
-    fontSize: 14,
-    color: "#555",
+  metricValue: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#065f46",
+    marginTop: 5,
+  },
+
+  logoutButton: {
+    marginTop: 30,
+    backgroundColor: "#ef4444",
+    paddingVertical: 14,
+    borderRadius: 999,
+    alignItems: "center",
+  },
+
+  logoutText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16,
   },
 });

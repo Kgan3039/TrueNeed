@@ -7,8 +7,6 @@ import {
   StyleSheet,
   Dimensions,
   ScrollView,
-  Modal,
-  Alert,
   Image,
 } from "react-native";
 import {
@@ -16,11 +14,8 @@ import {
   onSnapshot,
   query,
   orderBy,
-  addDoc,
-  updateDoc,
-  doc,
 } from "firebase/firestore";
-import { auth, db } from "../firebase/firebase";
+import { db } from "../firebase/firebase";
 
 const { width } = Dimensions.get("window");
 
@@ -28,10 +23,6 @@ export default function HomeScreen({ navigation }: any) {
   const [offers, setOffers] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-
-  const [matchModalVisible, setMatchModalVisible] = useState(false);
-  const [generatedMatch, setGeneratedMatch] = useState<any>(null);
-
   const scrollRef = useRef<any>(null);
 
   useEffect(() => {
@@ -57,98 +48,63 @@ export default function HomeScreen({ navigation }: any) {
     setActiveIndex(index);
   };
 
-  // MOCK MATCH GENERATOR (until AI is added)
-  const handleGenerateMatch = async () => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-      Alert.alert("Not signed in");
-      return;
-    }
+  const renderPost = ({ item }: any) => {
+    const isOffer = item.quantity !== undefined;
 
-    try {
-      const newMatchRef = await addDoc(collection(db, "matches"), {
-        offerTitle: "Sample Offer",
-        requestTitle: "Sample Request",
-        requestOwnerUid: uid,
-        status: "pending",
-        createdAt: Date.now(),
-      });
+    return (
+      <View style={styles.feedCard}>
+        <View style={styles.cardAccent} />
 
-      const mockMatch = {
-        id: newMatchRef.id,
-        offerTitle: "Sample Offer",
-        requestTitle: "Sample Request",
-      };
+        <View style={styles.cardContentRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.feedTitle}>
+              {item.title ?? "(Untitled)"}
+            </Text>
 
-      setGeneratedMatch(mockMatch);
-      setMatchModalVisible(true);
-    } catch (e) {
-      console.log(e);
-      Alert.alert("Error generating match");
-    }
+            {item.category ? (
+              <Text style={styles.categoryText}>
+                {item.category.toUpperCase()}
+              </Text>
+            ) : null}
+          </View>
+
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>
+              {isOffer ? "QTY" : "URGENCY"}
+            </Text>
+            <Text style={styles.statValue}>
+              {isOffer
+                ? item.quantity ?? "-"
+                : item.urgency ?? "-"}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
   };
-
-  const handleApprove = async () => {
-    if (!generatedMatch) return;
-
-    try {
-      await updateDoc(doc(db, "matches", generatedMatch.id), {
-        status: "accepted",
-      });
-
-      setMatchModalVisible(false);
-      navigation.navigate("MatchInbox");
-    } catch (e) {
-      console.log(e);
-      Alert.alert("Approve failed");
-    }
-  };
-
-  const handleReject = async () => {
-    if (!generatedMatch) return;
-
-    try {
-      await updateDoc(doc(db, "matches", generatedMatch.id), {
-        status: "rejected",
-      });
-
-      setMatchModalVisible(false);
-      navigation.navigate("MatchInbox");
-    } catch (e) {
-      console.log(e);
-      Alert.alert("Reject failed");
-    }
-  };
-
-  const renderPost = ({ item }: any) => (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>{item.title ?? "(no title)"}</Text>
-      {!!item.category && <Text>Category: {item.category}</Text>}
-      {!!item.quantity && <Text>Quantity: {item.quantity}</Text>}
-      {!!item.urgency && <Text>Urgency: {item.urgency}</Text>}
-      {!!item.locationText && <Text>Location: {item.locationText}</Text>}
-    </View>
-  );
 
   return (
     <View style={styles.container}>
+      {/* Top Header */}
+      <View style={styles.header}>
+        <Text style={styles.logo}>TrueNeed</Text>
 
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity onPress={() => handleTabPress(0)}>
-          <Text style={[styles.tabText, activeIndex === 0 && styles.activeTab]}>
-            Offers
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity onPress={() => handleTabPress(0)}>
+            <Text style={[styles.tabText, activeIndex === 0 && styles.activeTab]}>
+              Offers
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => handleTabPress(1)}>
-          <Text style={[styles.tabText, activeIndex === 1 && styles.activeTab]}>
-            Requests
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleTabPress(1)}>
+            <Text style={[styles.tabText, activeIndex === 1 && styles.activeTab]}>
+              Requests
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Swipe Feed */}
+      {/* Feed */}
       <ScrollView
         horizontal
         pagingEnabled
@@ -164,7 +120,7 @@ export default function HomeScreen({ navigation }: any) {
           keyExtractor={(item) => item.id}
           renderItem={renderPost}
           style={{ width }}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: 150, paddingTop: 20 }}
         />
 
         <FlatList
@@ -172,32 +128,9 @@ export default function HomeScreen({ navigation }: any) {
           keyExtractor={(item) => item.id}
           renderItem={renderPost}
           style={{ width }}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: 150, paddingTop: 20 }}
         />
       </ScrollView>
-
-      {/* MATCH MODAL */}
-      <Modal visible={matchModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={{ fontWeight: "700", marginBottom: 10 }}>
-              Match Found!
-            </Text>
-
-            <Text>{generatedMatch?.offerTitle}</Text>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.approveBtn} onPress={handleApprove}>
-                <Text style={{ color: "white" }}>Approve</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.rejectBtn} onPress={handleReject}>
-                <Text style={{ color: "#065f46" }}>Reject</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
@@ -210,11 +143,6 @@ export default function HomeScreen({ navigation }: any) {
           label="Request"
           icon={require("../../assets/icons/request.png")}
           onPress={() => navigation.navigate("CreateRequest")}
-        />
-        <NavButton
-          label="Match"
-          icon={require("../../assets/icons/match.png")}
-          onPress={handleGenerateMatch}
         />
         <NavButton
           label="Inbox"
@@ -241,38 +169,102 @@ function NavButton({ label, icon, onPress }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#ecfdf5" },
+  container: {
+    flex: 1,
+    backgroundColor: "#f0fdf4",
+  },
+
+  header: {
+    backgroundColor: "#10b981",
+    paddingTop: 55,
+    paddingBottom: 25,
+    alignItems: "center",
+  },
+
+  logo: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: "white",
+    marginBottom: 15,
+  },
 
   tabsContainer: {
     flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 10,
-    marginBottom: 10,
+    gap: 35,
   },
 
   tabText: {
-    marginHorizontal: 25,
     fontSize: 18,
     fontWeight: "600",
-    color: "#065f46",
+    color: "#d1fae5",
   },
 
   activeTab: {
-    borderBottomWidth: 2,
-    borderColor: "#10b981",
+    color: "white",
+    borderBottomWidth: 3,
+    borderColor: "white",
     paddingBottom: 4,
   },
 
-  card: {
+  feedCard: {
     backgroundColor: "white",
     marginHorizontal: 20,
-    marginVertical: 8,
-    padding: 15,
-    borderRadius: 12,
-    elevation: 2,
+    marginVertical: 14,
+    padding: 22,
+    borderRadius: 22,
+    elevation: 6,
+    shadowColor: "#065f46",
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
   },
 
-  cardTitle: { fontWeight: "700", marginBottom: 5 },
+  cardAccent: {
+    height: 4,
+    width: 45,
+    backgroundColor: "#10b981",
+    borderRadius: 4,
+    marginBottom: 15,
+  },
+
+  cardContentRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  feedTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#065f46",
+  },
+
+  categoryText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+
+  statBox: {
+    backgroundColor: "#d1fae5",
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    borderRadius: 18,
+    alignItems: "center",
+  },
+
+  statLabel: {
+    fontSize: 11,
+    color: "#065f46",
+    opacity: 0.8,
+  },
+
+  statValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#065f46",
+    marginTop: 4,
+  },
 
   bottomNav: {
     position: "absolute",
@@ -280,61 +272,26 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     justifyContent: "space-around",
-    paddingVertical: 12,
+    paddingVertical: 18,
     backgroundColor: "white",
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
   },
 
-  navItem: { alignItems: "center" },
+  navItem: {
+    alignItems: "center",
+  },
 
   navIconImage: {
-    width: 26,
-    height: 26,
+    width: 38,
+    height: 38,
     resizeMode: "contain",
   },
 
   navText: {
-    fontSize: 11,
-    marginTop: 3,
+    fontSize: 12,
+    marginTop: 6,
     color: "#065f46",
-  },
-
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-
-  modalCard: {
-    backgroundColor: "white",
-    padding: 20,
-    borderRadius: 12,
-    width: "80%",
-  },
-
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
-  },
-
-  approveBtn: {
-    backgroundColor: "#10b981",
-    padding: 10,
-    borderRadius: 8,
-    flex: 1,
-    marginRight: 10,
-    alignItems: "center",
-  },
-
-  rejectBtn: {
-    borderWidth: 1,
-    borderColor: "#10b981",
-    padding: 10,
-    borderRadius: 8,
-    flex: 1,
-    alignItems: "center",
+    fontWeight: "600",
   },
 });
