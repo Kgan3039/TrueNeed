@@ -9,7 +9,7 @@ import {
   createMatch,
   acceptMatch,
   rejectMatch,
-} from "../src/firebase/firestoreService";
+} from "../firebase/firestoreService";
 
 export default function HomeFeedScreen() {
   const [requests, setRequests] = useState<any[]>([]);

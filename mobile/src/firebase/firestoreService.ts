@@ -1,39 +1,73 @@
-import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "./firebase"; // adjust if firebase.ts is elsewhere
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
+import { db } from "../firebase/firebase";
 
-// Fetch open requests
+
+// ----------------------
+// FETCH FUNCTIONS
+// ----------------------
+
 export async function fetchOpenRequests() {
   const q = query(collection(db, "requests"), where("status", "==", "open"));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  return snapshot.docs.map((d) => ({
+    id: d.id,
+    ...d.data(),
+  }));
 }
 
-// Fetch open offers
 export async function fetchOpenOffers() {
   const q = query(collection(db, "offers"), where("status", "==", "open"));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  return snapshot.docs.map((d) => ({
+    id: d.id,
+    ...d.data(),
+  }));
 }
 
-// Simple client-side matching logic
+
+// ----------------------
+// MATCH LOGIC
+// ----------------------
+
 export function generateMatch(requests: any[], offers: any[]) {
   if (!requests?.length || !offers?.length) return null;
 
-  // Sort requests by urgency (default 0 if missing)
-  const sortedRequests = [...requests].sort((a, b) => (b.urgency || 0) - (a.urgency || 0));
+  const sortedRequests = [...requests].sort(
+    (a, b) => (b?.urgency || 0) - (a?.urgency || 0)
+  );
 
-  for (let request of sortedRequests) {
-    if (!request.category) continue; // skip if no category
+  for (const request of sortedRequests) {
+    if (!request?.id || !request?.category) continue;
 
     const matchingOffer = offers.find(
-      o => o.category && o.category === request.category && o.ownerUid && o.ownerUid !== request.ownerUid
+      (offer) =>
+        offer?.id &&
+        offer?.category &&
+        offer.category === request.category &&
+        offer.ownerUid !== request.ownerUid &&
+        offer.status === "open"
     );
 
     if (matchingOffer) {
       return {
         request,
         offer: matchingOffer,
-        reasons: [`High urgency (${request.urgency || 0}/5)`, "Category match"]
+        reasons: [
+          `High urgency (${request.urgency || 0}/5)`,
+          "Category match",
+        ],
       };
     }
   }
@@ -41,19 +75,30 @@ export function generateMatch(requests: any[], offers: any[]) {
   return null;
 }
 
-// Create a match document
-export async function createMatch(matchData: { request: any; offer: any; reasons?: string[] }) {
-  const { request, offer, reasons } = matchData;
+
+// ----------------------
+// CREATE MATCH
+// ----------------------
+
+export async function createMatch(matchData: {
+  request: any;
+  offer: any;
+  reasons?: string[];
+}) {
+  if (!matchData?.request?.id || !matchData?.offer?.id) {
+    console.log("Invalid match data", matchData);
+    return null;
+  }
 
   const docRef = await addDoc(collection(db, "matches"), {
-    offerId: offer?.id ?? "",
-    requestId: request?.id ?? "",
-    offerTitle: offer?.title ?? "No title",
-    requestTitle: request?.title ?? "No title",
-    offerOwnerUid: offer?.ownerUid ?? "",
-    requestOwnerUid: request?.ownerUid ?? "",
-    score: request?.urgency ?? 0,
-    reasons: reasons ?? ["No reasons"],
+    offerId: matchData.offer.id,
+    requestId: matchData.request.id,
+    offerTitle: matchData.offer.title || "",
+    requestTitle: matchData.request.title || "",
+    offerOwnerUid: matchData.offer.ownerUid || "",
+    requestOwnerUid: matchData.request.ownerUid || "",
+    score: matchData.request.urgency || 0,
+    reasons: matchData.reasons || [],
     status: "proposed",
     createdAt: serverTimestamp(),
   });
@@ -61,29 +106,54 @@ export async function createMatch(matchData: { request: any; offer: any; reasons
   return docRef.id;
 }
 
-// Accept a match
+
+// ----------------------
+// ACCEPT MATCH
+// ----------------------
+
 export async function acceptMatch(match: any) {
-  if (!match?.id || !match.offerId || !match.requestId) {
-    console.error("Cannot accept match: missing IDs", match);
+  if (!match?.id || !match?.offerId || !match?.requestId) {
+    console.log("Missing match IDs", match);
     return;
   }
 
-  const matchRef = doc(db, "matches", match.id);
-  const offerRef = doc(db, "offers", match.offerId);
-  const requestRef = doc(db, "requests", match.requestId);
-
   try {
-    await updateDoc(matchRef, { status: "accepted" });
-    await updateDoc(offerRef, { status: "matched" });
-    await updateDoc(requestRef, { status: "matched" });
-    console.log("Match accepted successfully:", match.id);
+    await updateDoc(doc(db, "matches", match.id), {
+      status: "accepted",
+    });
+
+    await updateDoc(doc(db, "offers", match.offerId), {
+      status: "matched",
+    });
+
+    await updateDoc(doc(db, "requests", match.requestId), {
+      status: "matched",
+    });
+
+    console.log("Match accepted:", match.id);
   } catch (error) {
-    console.error("Error accepting match:", error);
+    console.log("Accept failed:", error);
   }
 }
 
-// Reject a match
+
+// ----------------------
+// REJECT MATCH
+// ----------------------
+
 export async function rejectMatch(match: any) {
-  const matchRef = doc(db, "matches", match.id);
-  await updateDoc(matchRef, { status: "rejected" });
+  if (!match?.id) {
+    console.log("Missing match id");
+    return;
+  }
+
+  try {
+    await updateDoc(doc(db, "matches", match.id), {
+      status: "rejected",
+    });
+
+    console.log("Match rejected:", match.id);
+  } catch (error) {
+    console.log("Reject failed:", error);
+  }
 }
