@@ -7,14 +7,22 @@ import AppNavigator from "./src/navigation/AppNavigator";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setInitializing(false);
+    });
+
+    return unsubscribe;
   }, []);
+
+  if (initializing) return null;
 
   return (
     <NavigationContainer>
-      <AppNavigator user={user} />
+      <AppNavigator isLoggedIn={!!user} />
     </NavigationContainer>
   );
 }

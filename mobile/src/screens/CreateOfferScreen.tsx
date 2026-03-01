@@ -1,71 +1,126 @@
 import React, { useState } from "react";
-import { View, TextInput, Button, Alert } from "react-native";
-import { collection, addDoc } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { auth } from "../firebase/firebase";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+} from "react-native";
+import { addDoc, collection } from "firebase/firestore";
+import { auth, db } from "../firebase/firebase";
 
 export default function CreateOfferScreen({ navigation }: any) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [locationText, setLocationText] = useState("");
 
   const handleSubmit = async () => {
-    if (!title || !category || !quantity) {
-      Alert.alert("Please fill all required fields");
+    if (!title.trim()) {
+      Alert.alert("Title required");
       return;
     }
 
     try {
       await addDoc(collection(db, "offers"), {
-        ownerUid: auth.currentUser?.uid,
         title,
         category,
-        quantity,
-        locationText,
-        status: "open",
+        quantity: Number(quantity) || 0,
+        ownerUid: auth.currentUser?.uid,
         createdAt: Date.now(),
       });
 
-      Alert.alert("Offer posted!");
       navigation.goBack();
-    } catch (error) {
-      console.log(error);
-      Alert.alert("Error posting offer");
+    } catch (e) {
+      Alert.alert("Error creating offer");
     }
   };
 
   return (
-    <View style={{ flex: 1, padding: 20 }}>
-      <TextInput
-        placeholder="Title"
-        value={title}
-        onChangeText={setTitle}
-        style={{ borderWidth: 1, marginBottom: 10, padding: 8 }}
-      />
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+      <View style={styles.card}>
+        <Text style={styles.title}>Create Offer</Text>
 
-      <TextInput
-        placeholder="Category"
-        value={category}
-        onChangeText={setCategory}
-        style={{ borderWidth: 1, marginBottom: 10, padding: 8 }}
-      />
+        <Input label="Title" value={title} onChangeText={setTitle} />
+        <Input label="Category" value={category} onChangeText={setCategory} />
+        <Input
+          label="Quantity"
+          value={quantity}
+          onChangeText={setQuantity}
+          keyboardType="numeric"
+        />
 
-      <TextInput
-        placeholder="Quantity"
-        value={quantity}
-        onChangeText={setQuantity}
-        style={{ borderWidth: 1, marginBottom: 10, padding: 8 }}
-      />
+        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
+          <Text style={styles.primaryText}>Post Offer</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
 
+function Input({ label, ...props }: any) {
+  return (
+    <View style={{ marginBottom: 18 }}>
+      <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholder="Location"
-        value={locationText}
-        onChangeText={setLocationText}
-        style={{ borderWidth: 1, marginBottom: 10, padding: 8 }}
+        style={styles.input}
+        placeholder={`Enter ${label}`}
+        placeholderTextColor="#888"
+        {...props}
       />
-
-      <Button title="Post Offer" onPress={handleSubmit} />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#ecfdf5",
+    paddingHorizontal: 20,
+  },
+
+  card: {
+    backgroundColor: "white",
+    marginTop: 20,
+    padding: 25,
+    borderRadius: 16,
+    elevation: 3,
+  },
+
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 25,
+    color: "#065f46",
+  },
+
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 6,
+    color: "#065f46",
+  },
+
+  input: {
+    backgroundColor: "#f9fafb",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  primaryButton: {
+    backgroundColor: "#10b981",
+    paddingVertical: 14,
+    borderRadius: 999,
+    alignItems: "center",
+    marginTop: 10,
+  },
+
+  primaryText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 16,
+  },
+});

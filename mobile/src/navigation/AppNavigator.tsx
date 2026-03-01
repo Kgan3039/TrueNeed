@@ -6,30 +6,36 @@ import SignupScreen from "../screens/SignupScreen";
 import HomeScreen from "../screens/HomeScreen";
 import CreateOfferScreen from "../screens/CreateOfferScreen";
 import CreateRequestScreen from "../screens/CreateRequestScreen";
-
-//Pratham screens (adjust paths/names to match your repo)
 import MatchInboxScreen from "../screens/MatchInboxScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 
 export type RootStackParamList = {
-  Login: undefined;
   Signup: undefined;
+  Login: undefined;
   Home: undefined;
   CreateOffer: undefined;
   CreateRequest: undefined;
-
-  MatchInbox: { currentUid: string };
-  Dashboard: { currentUid: string };
+  MatchInbox: undefined;
+  Dashboard: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export default function AppNavigator({ user }: { user: any }) {
+type Props = {
+  isLoggedIn: boolean;
+};
+
+export default function AppNavigator({ isLoggedIn }: Props) {
   return (
-    <Stack.Navigator>
-      {user ? (
+    <Stack.Navigator
+      screenOptions={{
+        animation: "none",
+        headerTitleAlign: "center",
+      }}
+    >
+      {isLoggedIn ? (
         <>
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Home" component={HomeScreen} options={{ title: "Home" }} />
           <Stack.Screen name="CreateOffer" component={CreateOfferScreen} />
           <Stack.Screen name="CreateRequest" component={CreateRequestScreen} />
           <Stack.Screen name="MatchInbox" component={MatchInboxScreen} />
@@ -37,8 +43,9 @@ export default function AppNavigator({ user }: { user: any }) {
         </>
       ) : (
         <>
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Signup" component={SignupScreen} />
+          {/* 🔥 Signup FIRST */}
+          <Stack.Screen name="Signup" component={SignupScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         </>
       )}
     </Stack.Navigator>
