@@ -24,26 +24,41 @@ export default function CreateRequestScreen({ navigation }: any) {
 
     try {
       await addDoc(collection(db, "requests"), {
-        title,
-        category,
-        urgency: Number(urgency) || 0,
         ownerUid: auth.currentUser?.uid,
+        title: title.trim(),
+        category: category.trim().toLowerCase(),
+        urgency: Number(urgency) || 0,
+        status: "open",
         createdAt: Date.now(),
       });
 
       navigation.goBack();
     } catch (e) {
+      console.error(e);
       Alert.alert("Error creating request");
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 40 }}
+    >
       <View style={styles.card}>
         <Text style={styles.title}>Create Request</Text>
 
-        <Input label="Title" value={title} onChangeText={setTitle} />
-        <Input label="Category" value={category} onChangeText={setCategory} />
+        <Input
+          label="Title"
+          value={title}
+          onChangeText={setTitle}
+        />
+
+        <Input
+          label="Category"
+          value={category}
+          onChangeText={setCategory}
+        />
+
         <Input
           label="Urgency (1-5)"
           value={urgency}
@@ -51,7 +66,10 @@ export default function CreateRequestScreen({ navigation }: any) {
           keyboardType="numeric"
         />
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={handleSubmit}
+        >
           <Text style={styles.primaryText}>Post Request</Text>
         </TouchableOpacity>
       </View>

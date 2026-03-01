@@ -24,26 +24,41 @@ export default function CreateOfferScreen({ navigation }: any) {
 
     try {
       await addDoc(collection(db, "offers"), {
-        title,
-        category,
+        title: title.trim(),
+        category: category.trim().toLowerCase(),
         quantity: Number(quantity) || 0,
         ownerUid: auth.currentUser?.uid,
+        status: "open",
         createdAt: Date.now(),
       });
 
       navigation.goBack();
     } catch (e) {
+      console.error(e);
       Alert.alert("Error creating offer");
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 40 }}
+    >
       <View style={styles.card}>
         <Text style={styles.title}>Create Offer</Text>
 
-        <Input label="Title" value={title} onChangeText={setTitle} />
-        <Input label="Category" value={category} onChangeText={setCategory} />
+        <Input
+          label="Title"
+          value={title}
+          onChangeText={setTitle}
+        />
+
+        <Input
+          label="Category"
+          value={category}
+          onChangeText={setCategory}
+        />
+
         <Input
           label="Quantity"
           value={quantity}
@@ -51,7 +66,10 @@ export default function CreateOfferScreen({ navigation }: any) {
           keyboardType="numeric"
         />
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit}>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={handleSubmit}
+        >
           <Text style={styles.primaryText}>Post Offer</Text>
         </TouchableOpacity>
       </View>
