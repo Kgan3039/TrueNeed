@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { View, TextInput, Button, Alert } from "react-native";
 import { collection, addDoc } from "firebase/firestore";
-import { db } from "../src/firebase/firebase";
-import { auth } from "../src/firebase/firebase";
+import { db, auth } from "../firebase/firebase";
 
 export default function CreateRequestScreen({ navigation }: any) {
   const [title, setTitle] = useState("");
