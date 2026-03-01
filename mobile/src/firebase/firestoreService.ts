@@ -7,20 +7,20 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
-  Timestamp,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
 
-// ----------------------
-// FETCH FUNCTIONS
-// ----------------------
+// -----------------------------
+// FETCH OPEN DATA
+// -----------------------------
 
 export async function fetchOpenRequests() {
   const q = query(collection(db, "requests"), where("status", "==", "open"));
-  const snapshot = await getDocs(q);
+  const snap = await getDocs(q);
 
-  return snapshot.docs.map((d) => ({
+  return snap.docs.map((d) => ({
     id: d.id,
     ...d.data(),
   }));
@@ -28,42 +28,41 @@ export async function fetchOpenRequests() {
 
 export async function fetchOpenOffers() {
   const q = query(collection(db, "offers"), where("status", "==", "open"));
-  const snapshot = await getDocs(q);
+  const snap = await getDocs(q);
 
-  return snapshot.docs.map((d) => ({
+  return snap.docs.map((d) => ({
     id: d.id,
     ...d.data(),
   }));
 }
 
 
-// ----------------------
+// -----------------------------
 // MATCH LOGIC
-// ----------------------
+// -----------------------------
 
 export function generateMatch(requests: any[], offers: any[]) {
   if (!requests?.length || !offers?.length) return null;
 
-  const sortedRequests = [...requests].sort(
+  const sorted = [...requests].sort(
     (a, b) => (b?.urgency || 0) - (a?.urgency || 0)
   );
 
-  for (const request of sortedRequests) {
+  for (const request of sorted) {
     if (!request?.id || !request?.category) continue;
 
-    const matchingOffer = offers.find(
-      (offer) =>
-        offer?.id &&
-        offer?.category &&
-        offer.category === request.category &&
-        offer.ownerUid !== request.ownerUid &&
-        offer.status === "open"
+    const offer = offers.find(
+      (o) =>
+        o?.id &&
+        o?.category === request.category &&
+        o?.ownerUid !== request.ownerUid &&
+        o?.status === "open"
     );
 
-    if (matchingOffer) {
+    if (offer) {
       return {
         request,
-        offer: matchingOffer,
+        offer,
         reasons: [
           `High urgency (${request.urgency || 0}/5)`,
           "Category match",
@@ -76,9 +75,9 @@ export function generateMatch(requests: any[], offers: any[]) {
 }
 
 
-// ----------------------
+// -----------------------------
 // CREATE MATCH
-// ----------------------
+// -----------------------------
 
 export async function createMatch(matchData: {
   request: any;
@@ -106,54 +105,36 @@ export async function createMatch(matchData: {
   return docRef.id;
 }
 
+// -----------------------------
+// UPDATE MATCH STATUS
+// -----------------------------
 
-// ----------------------
-// ACCEPT MATCH
-// ----------------------
+export async function setMatchStatus(
+  matchId: string,
+  status: "proposed" | "accepted" | "rejected"
+) {
+  if (!matchId) return;
 
-export async function acceptMatch(match: any) {
-  if (!match?.id || !match?.offerId || !match?.requestId) {
-    console.log("Missing match IDs", match);
-    return;
-  }
+  const matchRef = doc(db, "matches", matchId);
+  const matchSnap = await getDoc(matchRef);
 
-  try {
-    await updateDoc(doc(db, "matches", match.id), {
-      status: "accepted",
-    });
+  if (!matchSnap.exists()) return;
 
-    await updateDoc(doc(db, "offers", match.offerId), {
-      status: "matched",
-    });
+  const matchData: any = matchSnap.data();
 
-    await updateDoc(doc(db, "requests", match.requestId), {
-      status: "matched",
-    });
+  await updateDoc(matchRef, { status });
 
-    console.log("Match accepted:", match.id);
-  } catch (error) {
-    console.log("Accept failed:", error);
-  }
-}
+  if (status === "accepted") {
+    if (matchData.offerId) {
+      await updateDoc(doc(db, "offers", matchData.offerId), {
+        status: "matched",
+      });
+    }
 
-
-// ----------------------
-// REJECT MATCH
-// ----------------------
-
-export async function rejectMatch(match: any) {
-  if (!match?.id) {
-    console.log("Missing match id");
-    return;
-  }
-
-  try {
-    await updateDoc(doc(db, "matches", match.id), {
-      status: "rejected",
-    });
-
-    console.log("Match rejected:", match.id);
-  } catch (error) {
-    console.log("Reject failed:", error);
+    if (matchData.requestId) {
+      await updateDoc(doc(db, "requests", matchData.requestId), {
+        status: "matched",
+      });
+    }
   }
 }
