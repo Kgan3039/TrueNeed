@@ -1,22 +1,19 @@
 import React, { useEffect, useState } from "react";
+import { NavigationContainer } from "@react-navigation/native";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "./src/firebase/firebase";
-import AppNavigator from "./navigation/AppNavigator";
+import AppNavigator from "./src/navigation/AppNavigator";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    return onAuthStateChanged(auth, setUser);
   }, []);
 
-  if (loading) return null;
-
-  return <AppNavigator user={user} />;
+  return (
+    <NavigationContainer>
+      <AppNavigator isAuthed={!!user} />
+    </NavigationContainer>
+  );
 }
