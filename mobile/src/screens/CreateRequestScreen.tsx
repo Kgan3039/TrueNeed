@@ -16,10 +16,10 @@ export default function CreateRequestScreen({ navigation }: any) {
 
     try {
       await addDoc(collection(db, "requests"), {
-        ownerUid: auth.currentUser?.uid,
+        ownerUid: auth.currentUser!.uid,
         title,
-        category,
-        urgency,
+        category: category.trim().toLowerCase(),
+        urgency: urgency.trim().toLowerCase(),
         status: "open",
         createdAt: Date.now(),
       });

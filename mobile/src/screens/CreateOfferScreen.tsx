@@ -20,7 +20,7 @@ export default function CreateOfferScreen({ navigation }: any) {
       await addDoc(collection(db, "offers"), {
         ownerUid: auth.currentUser?.uid,
         title,
-        category,
+        category: category.trim().toLowerCase(),
         quantity,
         locationText,
         status: "open",
